@@ -1,33 +1,23 @@
 import requests
 from bs4 import BeautifulSoup
 from telegram import Bot
-import time
 import os
 import random
 from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# 🔐 Variáveis do Railway
+# 🔐 ENV
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-if not TOKEN:
-    print("ERRO: TOKEN em falta")
-    exit()
-
-if not CHAT_ID:
-    print("ERRO: CHAT_ID em falta")
-    exit()
-
 if not TOKEN or not CHAT_ID:
-    raise Exception("TOKEN ou CHAT_ID não definidos no ambiente!")
+    raise Exception("TOKEN ou CHAT_ID em falta")
 
 bot = Bot(token=TOKEN)
 
-# 🔎 filtros
 KEYWORDS = ["pc", "gaming", "teclado", "rato", "ssd", "monitor", "iphone", "android"]
 MAX_PRICE = 50
 
-# evitar repetição
 enviados = set()
 
 HEADERS_LIST = [
@@ -50,13 +40,11 @@ def procurar_promocoes():
 
     try:
         r = requests.get(url, headers=get_headers(), timeout=10)
-
         if r.status_code != 200:
-            log(f"Erro HTTP: {r.status_code}")
+            log(f"HTTP {r.status_code}")
             return []
-
     except Exception as e:
-        log(f"Erro request: {e}")
+        log(f"Request error: {e}")
         return []
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -86,51 +74,45 @@ def procurar_promocoes():
 
 
 def enviar_promocoes():
-    promos = procurar_promocoes()
+    try:
+        log("A procurar promoções...")
 
-    if not promos:
-        log("Sem promos novas")
-        return
+        promos = procurar_promocoes()
 
-    for titulo, preco in promos:
-        if titulo in enviados:
-            continue
+        if not promos:
+            log("Sem promos novas")
+            return
 
-        mensagem = f"🔥 PROMOÇÃO DETETADA\n\n🛒 {titulo}\n💸 {preco}€"
+        for titulo, preco in promos:
+            if titulo in enviados:
+                continue
 
-        try:
+            mensagem = f"🔥 PROMOÇÃO\n\n🛒 {titulo}\n💸 {preco}€"
+
             bot.send_message(chat_id=CHAT_ID, text=mensagem)
-            log(f"Enviado: {titulo}")
+
             enviados.add(titulo)
+            log(f"Enviado: {titulo}")
 
-        except Exception as e:
-            log(f"Erro ao enviar mensagem: {e}")
+    except Exception as e:
+        log(f"Erro na execução: {e}")
 
+
+# 🔁 Scheduler (em vez de while True)
+scheduler = BackgroundScheduler()
+scheduler.add_job(enviar_promocoes, 'interval', minutes=5)
 
 def main():
-    print("TOKEN:", TOKEN)
-    print("CHAT_ID:", CHAT_ID)
-    log("Bot iniciado com sucesso!")
+    log("🚀 Bot 24/7 iniciado com scheduler")
 
-    fail_count = 0
+    enviar_promocoes()  # run inicial
 
+    scheduler.start()
+
+    # mantém processo vivo
     while True:
-        try:
-            log("A procurar promoções...")
-            enviar_promocoes()
-            fail_count = 0
-
-        except Exception as e:
-            fail_count += 1
-            log(f"Erro geral ({fail_count}): {e}")
-
-            if fail_count >= 5:
-                log("Muitos erros seguidos, aguardando mais tempo...")
-
-        sleep_time = random.randint(240, 600)
-        time.sleep(sleep_time)
+        pass
 
 
 if __name__ == "__main__":
-    print("Bot a arrancar...")
     main()
