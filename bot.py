@@ -108,6 +108,8 @@ def enviar_promocoes():
 
 
 def main():
+    print("TOKEN:", TOKEN)
+    print("CHAT_ID:", CHAT_ID)
     log("Bot iniciado com sucesso!")
 
     fail_count = 0
@@ -130,4 +132,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("Bot a arrancar...")
     main()
