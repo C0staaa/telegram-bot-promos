@@ -19,30 +19,36 @@ bot = Bot(token=TOKEN)
 app = Flask(__name__)
 enviados = set()
 
+# Filtros
 KEYWORDS = ["pc", "gaming", "ssd", "monitor", "iphone", "portatil", "asus", "logitech", "samsung", "hp"]
 MAX_PRICE = 1200
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
-# --- WEB SERVER (Saúde do Container) ---
+# --- WEB SERVER (Obrigatório para o Railway) ---
 @app.route('/')
 def health_check():
-    return "Bot is running!", 200
+    return "Bot is active", 200
 
 # --- MOTOR DE BUSCA ---
 def procurar_e_enviar():
     log("🔎 Iniciando scan de ofertas...")
-    url = "https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031"
+    # URL de pesquisa variada para evitar bloqueios constantes
+    url = "https://www.amazon.es/s?k=ofertas+informatica&s=date-desc-rank"
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept-Language": "pt-PT,pt;q=0.9"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-PT,pt;q=0.9",
+        "Referer": "https://www.google.com/"
     }
 
     try:
-        r = requests.get(url, headers=headers, timeout=20)
-        if "captcha" in r.text.lower() or "robot check" in r.text.lower():
-            log("⚠️ Amazon bloqueou o IP. A aguardar próximo ciclo...")
+        # Adicionamos um parâmetro aleatório para a URL parecer sempre nova
+        r = requests.get(url, headers=headers, params={"ref": random.randint(1,9999)}, timeout=25)
+        
+        if "captcha" in r.text.lower() or r.status_code != 200:
+            log("⚠️ Bloqueio ou Captcha detetado.")
             return
 
         soup = BeautifulSoup(r.text, "html.parser")
@@ -68,7 +74,7 @@ def procurar_e_enviar():
                 img = item.find("img", class_="s-image")["src"]
 
                 bot.send_photo(chat_id=CHAT_ID, photo=img, 
-                             caption=f"🔥 *OFERTA*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [Link]({link})", 
+                             caption=f"🔥 *OFERTA AMAZON*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [Link]({link})", 
                              parse_mode='Markdown')
                 enviados.add(titulo)
                 log(f"✅ Enviado: {titulo[:30]}")
@@ -78,38 +84,20 @@ def procurar_e_enviar():
         log(f"❌ Erro no scan: {e}")
 
 # --- INICIALIZAÇÃO ---
-def start_bot_logic():
-    # Dá tempo ao Flask para subir primeiro
-    time.sleep(10)
-    procurar_e_enviar()
-    
-    # Usa pytz corretamente para evitar o TypeError anterior
-    tz = pytz.timezone('Europe/Lisbon')
-    scheduler = BackgroundScheduler(timezone=tz)
-    scheduler.add_job(procurar_e_enviar, "interval", minutes=20)
-    scheduler.start()
-    
-    while True:
-        time.sleep(60)
-        log("💓 bot ativo")
-
 if __name__ == "__main__":
-    log("🚀 BOT V5.3 - MODO ESTÁVEL")
+    log("🚀 BOT V5.4 - MODO ESTÁVEL")
     
-    # 1. Agendador (Corre em background)
+    # 1. Agendador (Aumentado para 30 min para ser menos agressivo)
     tz = pytz.timezone('Europe/Lisbon')
     scheduler = BackgroundScheduler(timezone=tz)
-    scheduler.add_job(procurar_e_enviar, "interval", minutes=20)
+    scheduler.add_job(procurar_e_enviar, "interval", minutes=30)
     scheduler.start()
     
-    # 2. IMPORTANTE: Não iniciamos o scan imediatamente aqui.
-    # Criamos uma thread que espera 30 segundos. 
-    # Isso dá tempo ao Railway de validar que o servidor Flask está vivo.
+    # 2. Scan inicial com delay para o Flask estabilizar
     def delay_start():
-        time.sleep(30)
+        time.sleep(45)
         procurar_e_enviar()
-        
     threading.Thread(target=delay_start, daemon=True).start()
     
-    # 3. O Flask PRECISA de correr sem debug para ser mais estável no Railway
-    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
+    # 3. Flask corre no processo principal (threaded para não bloquear)
+    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
