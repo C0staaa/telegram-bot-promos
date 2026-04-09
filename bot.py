@@ -5,21 +5,25 @@ import os
 import random
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
+import time
 
 # 🔐 ENV
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 if not TOKEN or not CHAT_ID:
-    raise Exception("TOKEN ou CHAT_ID em falta")
+    raise Exception("TOKEN ou CHAT_ID em falta no ambiente")
 
 bot = Bot(token=TOKEN)
 
+# 🔎 filtros
 KEYWORDS = ["pc", "gaming", "teclado", "rato", "ssd", "monitor", "iphone", "android"]
 MAX_PRICE = 50
 
+# evitar repetição
 enviados = set()
 
+# headers anti-bot básico
 HEADERS_LIST = [
     {"User-Agent": "Mozilla/5.0"},
     {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
@@ -35,6 +39,7 @@ def get_headers():
     return random.choice(HEADERS_LIST)
 
 
+# 🔎 SCRAPING
 def procurar_promocoes():
     url = "https://www.amazon.es/gp/goldbox"
 
@@ -68,14 +73,25 @@ def procurar_promocoes():
         if preco > MAX_PRICE:
             continue
 
-        promos.append((texto[:80], preco))
+        # 🖼 imagem
+        img_tag = p.find("img")
+        img_url = img_tag["src"] if img_tag and img_tag.has_attr("src") else None
+
+        # 🔗 link
+        link_tag = p.find("a", href=True)
+        link = "https://www.amazon.es" + link_tag["href"] if link_tag else "https://www.amazon.es/gp/goldbox"
+
+        titulo = texto[:80]
+
+        promos.append((titulo, preco, img_url, link))
 
     return promos
 
 
+# 📤 ENVIAR
 def enviar_promocoes():
     try:
-        log("A procurar promoções...")
+        log("🔎 A procurar promoções...")
 
         promos = procurar_promocoes()
 
@@ -83,13 +99,28 @@ def enviar_promocoes():
             log("Sem promos novas")
             return
 
-        for titulo, preco in promos:
+        for titulo, preco, img_url, link in promos:
             if titulo in enviados:
                 continue
 
-            mensagem = f"🔥 PROMOÇÃO\n\n🛒 {titulo}\n💸 {preco}€"
+            mensagem = (
+                f"🔥 PROMOÇÃO DETETADA\n\n"
+                f"🛒 {titulo}\n"
+                f"💸 {preco}€\n\n"
+                f"🔗 Ver na Amazon"
+            )
 
-            bot.send_message(chat_id=CHAT_ID, text=mensagem)
+            if img_url:
+                bot.send_photo(
+                    chat_id=CHAT_ID,
+                    photo=img_url,
+                    caption=mensagem,
+                )
+            else:
+                bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=mensagem
+                )
 
             enviados.add(titulo)
             log(f"Enviado: {titulo}")
@@ -98,20 +129,22 @@ def enviar_promocoes():
         log(f"Erro na execução: {e}")
 
 
-# 🔁 Scheduler (em vez de while True)
+# 🔁 scheduler 24/7
 scheduler = BackgroundScheduler()
-scheduler.add_job(enviar_promocoes, 'interval', minutes=5)
+scheduler.add_job(enviar_promocoes, "interval", minutes=5)
+
 
 def main():
-    log("🚀 Bot 24/7 iniciado com scheduler")
+    log("🚀 Bot 24/7 iniciado")
 
     enviar_promocoes()  # run inicial
 
     scheduler.start()
 
-    # mantém processo vivo
+    # mantém processo vivo (Railway safe)
     while True:
-        pass
+        time.sleep(60)
+        log("💓 bot ativo")
 
 
 if __name__ == "__main__":
