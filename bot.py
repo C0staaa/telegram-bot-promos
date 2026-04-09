@@ -19,19 +19,18 @@ bot = Bot(token=TOKEN)
 app = Flask(__name__)
 enviados = set()
 
-# Filtros
 KEYWORDS = ["pc", "gaming", "ssd", "monitor", "iphone", "portatil", "asus", "logitech", "samsung", "hp"]
 MAX_PRICE = 1200
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
-# --- WEB SERVER ---
+# --- WEB SERVER (Saúde do Container) ---
 @app.route('/')
 def health_check():
-    return "Bot is alive!", 200
+    return "Bot is running!", 200
 
-# --- LÓGICA DE SCRAPING ---
+# --- MOTOR DE BUSCA ---
 def procurar_e_enviar():
     log("🔎 Iniciando scan de ofertas...")
     url = "https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031"
@@ -42,8 +41,8 @@ def procurar_e_enviar():
 
     try:
         r = requests.get(url, headers=headers, timeout=20)
-        if "captcha" in r.text.lower():
-            log("⚠️ Bloqueio por Captcha detetado.")
+        if "captcha" in r.text.lower() or "robot check" in r.text.lower():
+            log("⚠️ Amazon bloqueou o IP. A aguardar próximo ciclo...")
             return
 
         soup = BeautifulSoup(r.text, "html.parser")
@@ -68,8 +67,9 @@ def procurar_e_enviar():
                 link = "https://www.amazon.es" + h2.find("a")["href"]
                 img = item.find("img", class_="s-image")["src"]
 
-                msg = f"🔥 *OFERTA ENCONTRADA*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [VER NA AMAZON]({link})"
-                bot.send_photo(chat_id=CHAT_ID, photo=img, caption=msg, parse_mode='Markdown')
+                bot.send_photo(chat_id=CHAT_ID, photo=img, 
+                             caption=f"🔥 *OFERTA*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [Link]({link})", 
+                             parse_mode='Markdown')
                 enviados.add(titulo)
                 log(f"✅ Enviado: {titulo[:30]}")
                 time.sleep(2)
@@ -78,17 +78,24 @@ def procurar_e_enviar():
         log(f"❌ Erro no scan: {e}")
 
 # --- INICIALIZAÇÃO ---
-if __name__ == "__main__":
-    # 1. Agendador (Corre a cada 20 min)
+def start_bot_logic():
+    # Dá tempo ao Flask para subir primeiro
+    time.sleep(10)
+    procurar_e_enviar()
+    
+    # Usa pytz corretamente para evitar o TypeError anterior
     tz = pytz.timezone('Europe/Lisbon')
     scheduler = BackgroundScheduler(timezone=tz)
     scheduler.add_job(procurar_e_enviar, "interval", minutes=20)
     scheduler.start()
     
-    log("🚀 BOT V5.1 STARTUP")
-    
-    # 2. Execução imediata numa thread para não travar o Flask
-    threading.Thread(target=procurar_e_enviar, daemon=True).start()
-    
-    # 3. Flask como processo principal para o Railway
+    while True:
+        time.sleep(60)
+        log("💓 bot ativo")
+
+if __name__ == "__main__":
+    log("🚀 BOT V5.2 STARTUP")
+    # Task em segundo plano
+    threading.Thread(target=start_bot_logic, daemon=True).start()
+    # Processo principal (obrigatório para o Railway não dar Stop)
     app.run(host='0.0.0.0', port=PORT)
