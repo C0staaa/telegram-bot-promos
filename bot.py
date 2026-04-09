@@ -10,6 +10,8 @@ from telegram import Bot
 from flask import Flask
 from apscheduler.schedulers.background import BackgroundScheduler
 
+app = Flask(__name__)
+
 # --- CONFIGURAÇÃO ---
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -84,7 +86,7 @@ def procurar_e_enviar():
         log(f"❌ Erro no scan: {e}")
 
 if __name__ == "__main__":
-    log("🚀 BOT V5.5 - MODO ATIVO")
+    log("🚀 BOT V5.6 - FINAL")
     
     # 1. Agendador
     tz = pytz.timezone('Europe/Lisbon')
@@ -92,13 +94,11 @@ if __name__ == "__main__":
     scheduler.add_job(procurar_e_enviar, "interval", minutes=30)
     scheduler.start()
     
-    # 2. Inicia o scan em segundo plano após 60s
-    # Aumentamos o delay para o Railway estabilizar o domínio primeiro
-    def delay_start():
-        time.sleep(60)
+    # 2. Thread de segurança
+    def startup_logic():
+        time.sleep(60) # Espera o servidor web estabilizar
         procurar_e_enviar()
-    threading.Thread(target=delay_start, daemon=True).start()
+    threading.Thread(target=startup_logic, daemon=True).start()
     
-    # 3. Flask com Keep-Alive
-    # Usamos o threaded=True para o servidor não bloquear enquanto o bot pesquisa
-    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
+    # 3. Execução local (O Procfile usará o gunicorn em produção)
+    app.run(host='0.0.0.0', port=PORT)
