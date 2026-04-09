@@ -10,6 +10,14 @@ from datetime import datetime
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+if not TOKEN:
+    print("ERRO: TOKEN em falta")
+    exit()
+
+if not CHAT_ID:
+    print("ERRO: CHAT_ID em falta")
+    exit()
+
 if not TOKEN or not CHAT_ID:
     raise Exception("TOKEN ou CHAT_ID não definidos no ambiente!")
 
