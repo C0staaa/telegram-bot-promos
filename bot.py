@@ -94,8 +94,22 @@ def start_bot_logic():
         log("💓 bot ativo")
 
 if __name__ == "__main__":
-    log("🚀 BOT V5.2 STARTUP")
-    # Task em segundo plano
-    threading.Thread(target=start_bot_logic, daemon=True).start()
-    # Processo principal (obrigatório para o Railway não dar Stop)
-    app.run(host='0.0.0.0', port=PORT)
+    log("🚀 BOT V5.3 - MODO ESTÁVEL")
+    
+    # 1. Agendador (Corre em background)
+    tz = pytz.timezone('Europe/Lisbon')
+    scheduler = BackgroundScheduler(timezone=tz)
+    scheduler.add_job(procurar_e_enviar, "interval", minutes=20)
+    scheduler.start()
+    
+    # 2. IMPORTANTE: Não iniciamos o scan imediatamente aqui.
+    # Criamos uma thread que espera 30 segundos. 
+    # Isso dá tempo ao Railway de validar que o servidor Flask está vivo.
+    def delay_start():
+        time.sleep(30)
+        procurar_e_enviar()
+        
+    threading.Thread(target=delay_start, daemon=True).start()
+    
+    # 3. O Flask PRECISA de correr sem debug para ser mais estável no Railway
+    app.run(host='0.0.0.0', port=PORT, debug=False, use_reloader=False)
