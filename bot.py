@@ -3,6 +3,8 @@ from bs4 import BeautifulSoup
 from telegram import Bot
 import time
 import os
+import random
+from datetime import datetime
 
 # 🔐 Variáveis do Railway
 TOKEN = os.getenv("TOKEN")
@@ -17,15 +19,33 @@ MAX_PRICE = 50
 # evitar repetição
 enviados = set()
 
+HEADERS_LIST = [
+    {"User-Agent": "Mozilla/5.0"},
+    {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+    {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"},
+]
+
+
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+
+def get_headers():
+    return random.choice(HEADERS_LIST)
+
 
 def procurar_promocoes():
     url = "https://www.amazon.es/gp/goldbox"
-    headers = {"User-Agent": "Mozilla/5.0"}
 
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=get_headers(), timeout=10)
+
+        if r.status_code != 200:
+            log(f"Erro HTTP: {r.status_code}")
+            return []
+
     except Exception as e:
-        print("Erro request:", e)
+        log(f"Erro request: {e}")
         return []
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -58,7 +78,7 @@ def enviar_promocoes():
     promos = procurar_promocoes()
 
     if not promos:
-        print("Sem promos novas")
+        log("Sem promos novas")
         return
 
     for titulo, preco in promos:
@@ -69,24 +89,34 @@ def enviar_promocoes():
 
         try:
             bot.send_message(chat_id=CHAT_ID, text=mensagem)
-            print("Enviado:", titulo)
-
+            log(f"Enviado: {titulo}")
             enviados.add(titulo)
 
         except Exception as e:
-            print("Erro ao enviar mensagem:", e)
+            log(f"Erro ao enviar mensagem: {e}")
 
 
-print("🤖 Bot iniciado com sucesso!")
+def main():
+    log("Bot iniciado com sucesso!")
 
-# 🔁 LOOP ETERNO (CRÍTICO PARA RAILWAY)
-while True:
-    try:
-        print("🔎 A procurar promoções...")
-        enviar_promocoes()
+    fail_count = 0
 
-    except Exception as e:
-        print("Erro geral:", e)
+    while True:
+        try:
+            log("A procurar promoções...")
+            enviar_promocoes()
+            fail_count = 0
 
-    # evita crash e abuso de requests
-    time.sleep(300)  # 5 minutos
+        except Exception as e:
+            fail_count += 1
+            log(f"Erro geral ({fail_count}): {e}")
+
+            if fail_count >= 5:
+                log("Muitos erros seguidos, aguardando mais tempo...")
+
+        sleep_time = random.randint(240, 600)
+        time.sleep(sleep_time)
+
+
+if __name__ == "__main__":
+    main()
