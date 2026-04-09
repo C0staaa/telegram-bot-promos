@@ -89,4 +89,4 @@ while True:
         print("Erro geral:", e)
 
     # evita crash e abuso de requests
-    time.sleep(1800)  # 30 minutos
+    time.sleep(900)  # 30 minutos
