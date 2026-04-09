@@ -4,30 +4,31 @@ from telegram import Bot
 import time
 import os
 
-# 🔐 vem do Render (NUNCA escrevas aqui)
+# 🔐 Variáveis do Railway
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 bot = Bot(token=TOKEN)
 
-# 🔎 filtros (podes alterar depois)
+# 🔎 filtros
 KEYWORDS = ["pc", "gaming", "teclado", "rato", "ssd", "monitor", "iphone", "android"]
 MAX_PRICE = 50
 
-# evita repetir mensagens
+# evitar repetição
 enviados = set()
 
 
 def procurar_promocoes():
     url = "https://www.amazon.es/gp/goldbox"
+    headers = {"User-Agent": "Mozilla/5.0"}
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+    except Exception as e:
+        print("Erro request:", e)
+        return []
 
-    r = requests.get(url, headers=headers)
     soup = BeautifulSoup(r.text, "html.parser")
-
     produtos = soup.find_all("div", {"data-deal-id": True})
 
     promos = []
@@ -35,7 +36,6 @@ def procurar_promocoes():
     for p in produtos:
         texto = p.get_text().lower()
 
-        # filtro por palavras
         if not any(k in texto for k in KEYWORDS):
             continue
 
@@ -54,7 +54,7 @@ def procurar_promocoes():
     return promos
 
 
-def enviar():
+def enviar_promocoes():
     promos = procurar_promocoes()
 
     if not promos:
@@ -67,17 +67,26 @@ def enviar():
 
         mensagem = f"🔥 PROMOÇÃO DETETADA\n\n🛒 {titulo}\n💸 {preco}€"
 
-        bot.send_message(chat_id=CHAT_ID, text=mensagem)
+        try:
+            bot.send_message(chat_id=CHAT_ID, text=mensagem)
+            print("Enviado:", titulo)
 
-        enviados.add(titulo)
-        print("Enviado:", titulo)
+            enviados.add(titulo)
+
+        except Exception as e:
+            print("Erro ao enviar mensagem:", e)
 
 
-# 🔁 loop 30 minutos
+print("🤖 Bot iniciado com sucesso!")
+
+# 🔁 LOOP ETERNO (CRÍTICO PARA RAILWAY)
 while True:
     try:
-        enviar()
-    except Exception as e:
-        print("Erro:", e)
+        print("🔎 A procurar promoções...")
+        enviar_promocoes()
 
-    time.sleep(1800)
+    except Exception as e:
+        print("Erro geral:", e)
+
+    # evita crash e abuso de requests
+    time.sleep(1800)  # 30 minutos
