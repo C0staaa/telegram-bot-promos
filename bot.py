@@ -10,6 +10,9 @@ from datetime import datetime
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+if not TOKEN or not CHAT_ID:
+    raise Exception("TOKEN ou CHAT_ID não definidos no ambiente!")
+
 bot = Bot(token=TOKEN)
 
 # 🔎 filtros
