@@ -95,20 +95,19 @@ def job():
             time.sleep(2)
         except: continue
 
-# --- INICIALIZAÇÃO ---
+# --- INICIALIZAÇÃO CORRIGIDA ---
 if __name__ == "__main__":
-    # 1. Inicia Web Server para o Railway
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-    # 2. Configura Agenda
+    # 1. Iniciamos o Agendador
     tz = pytz.timezone('Europe/Lisbon')
     scheduler = BackgroundScheduler(timezone=tz)
-    scheduler.add_job(job, "interval", minutes=20) # Aumentado para evitar ban
+    scheduler.add_job(job_verificacao, "interval", minutes=20)
     scheduler.start()
     
     log("🚀 BOT V5 STARTUP")
-    job() # Executa uma vez ao ligar
     
-    # Mantém o processo principal vivo
-    while True:
-        time.sleep(3600)
+    # 2. Criamos uma tarefa para o Bot não travar o servidor
+    threading.Thread(target=job_verificacao, daemon=True).start()
+    
+    # 3. O Flask corre no processo PRINCIPAL (Importante para o Railway)
+    # O Railway precisa que este processo nunca feche
+    app.run(host='0.0.0.0', port=PORT)
