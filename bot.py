@@ -83,21 +83,22 @@ def procurar_e_enviar():
     except Exception as e:
         log(f"❌ Erro no scan: {e}")
 
-# --- INICIALIZAÇÃO ---
 if __name__ == "__main__":
-    log("🚀 BOT V5.4 - MODO ESTÁVEL")
+    log("🚀 BOT V5.5 - MODO ATIVO")
     
-    # 1. Agendador (Aumentado para 30 min para ser menos agressivo)
+    # 1. Agendador
     tz = pytz.timezone('Europe/Lisbon')
     scheduler = BackgroundScheduler(timezone=tz)
     scheduler.add_job(procurar_e_enviar, "interval", minutes=30)
     scheduler.start()
     
-    # 2. Scan inicial com delay para o Flask estabilizar
+    # 2. Inicia o scan em segundo plano após 60s
+    # Aumentamos o delay para o Railway estabilizar o domínio primeiro
     def delay_start():
-        time.sleep(45)
+        time.sleep(60)
         procurar_e_enviar()
     threading.Thread(target=delay_start, daemon=True).start()
     
-    # 3. Flask corre no processo principal (threaded para não bloquear)
+    # 3. Flask com Keep-Alive
+    # Usamos o threaded=True para o servidor não bloquear enquanto o bot pesquisa
     app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)
