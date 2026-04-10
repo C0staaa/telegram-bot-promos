@@ -16,11 +16,10 @@ CHAT_ID = os.getenv("CHAT_ID")
 PORT = int(os.getenv("PORT", 8080))
 
 bot = Bot(token=TOKEN)
-app = Flask(__name__) # O Gunicorn vai procurar por este 'app'
+app = Flask(__name__)
 enviados = set()
 
 KEYWORDS = ["pc", "gaming", "ssd", "monitor", "iphone", "portatil", "laptop", "asus", "logitech", "samsung", "hp", "ps5", "grafica", "apple", "rtx"]
-MAX_PRICE = 1500
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
@@ -31,63 +30,69 @@ def health_check():
 
 def procurar_e_enviar():
     log("🔎 Iniciando scan de ofertas...")
-    url = f"https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031&ref=nb_sb_noss_{random.randint(1,999)}"
+    
+    # Lista de User-Agents para variar a identidade
+    ua_list = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    ]
+
+    url = f"https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031&ref=v62_{random.randint(1,999)}"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept-Language": "pt-PT,pt;q=0.9",
+        "User-Agent": random.choice(ua_list),
+        "Accept-Language": "pt-PT,pt;q=0.9,en-US;q=0.8",
         "Referer": "https://www.google.pt/"
     }
 
     try:
-        r = requests.get(url, headers=headers, timeout=30)
+        # Usamos timeout maior e uma sessão fresca
+        with requests.Session() as s:
+            r = s.get(url, headers=headers, timeout=30)
+            
         if "captcha" in r.text.lower() or r.status_code != 200:
-            log("⚠️ Bloqueio temporário (IP marcado). A tentar noutro ciclo...")
+            log(f"⚠️ Amazon bloqueou (Status: {r.status_code}). A tentar no próximo ciclo...")
             return
 
         soup = BeautifulSoup(r.text, "html.parser")
         itens = soup.find_all("div", {"data-component-type": "s-search-result"})
-        log(f"📊 Scan concluído: {len(itens)} produtos analisados.")
+        log(f"📊 Scan concluído: {len(itens)} produtos encontrados.")
 
-        for item in itens:
+        for item in itens[:10]: # Analisa os 10 primeiros para evitar lentidão
             try:
-                texto = item.get_text().lower()
-                if any(k in texto for k in KEYWORDS):
-                    preco_tag = item.find("span", class_="a-price-whole")
-                    if not preco_tag: continue
-                    
-                    preco = int(preco_tag.text.split(',')[0].replace(".", "").strip())
-                    if preco > MAX_PRICE: continue
+                h2 = item.find("h2")
+                if not h2: continue
+                
+                titulo = h2.text.strip()
+                if titulo in enviados: continue
 
-                    h2 = item.find("h2")
-                    titulo = h2.text.strip()[:80]
-                    if titulo in enviados: continue
-
-                    link = "https://www.amazon.es" + h2.find("a")["href"]
-                    img = item.find("img", class_="s-image")["src"]
-
-                    bot.send_photo(chat_id=CHAT_ID, photo=img, 
-                                 caption=f"🔥 *OFERTA*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [Link]({link})", 
-                                 parse_mode='Markdown')
-                    enviados.add(titulo)
-                    time.sleep(3)
+                preco_tag = item.find("span", class_="a-price-whole")
+                if not preco_tag: continue
+                
+                link = "https://www.amazon.es" + h2.find("a")["href"]
+                msg = f"🔥 *OFERTA*\n\n📦 {titulo[:100]}...\n💰 *{preco_tag.text}€*\n\n🔗 [Link]({link})"
+                
+                bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
+                enviados.add(titulo)
+                time.sleep(5) # Pausa maior entre mensagens
             except: continue
+            
     except Exception as e:
-        log(f"❌ Erro no scan: {e}")
+        log(f"❌ Erro: {e}")
 
 # --- AGENDADOR ---
-# Usamos pytz.timezone para evitar o erro de TypeError que viste nos logs
 fuso = pytz.timezone('Europe/Lisbon')
 scheduler = BackgroundScheduler(timezone=fuso)
-scheduler.add_job(procurar_e_enviar, 'interval', minutes=25)
+scheduler.add_job(procurar_e_enviar, 'interval', minutes=30)
 scheduler.start()
 
-# Scan inicial após 60 segundos (tempo para o Railway validar o Healthcheck)
-def startup_task():
-    time.sleep(60)
+# Espera 2 minutos antes do primeiro scan para o IP "arrefecer"
+def startup_delayed():
+    time.sleep(120)
     procurar_e_enviar()
-threading.Thread(target=startup_task, daemon=True).start()
+
+threading.Thread(target=startup_delayed, daemon=True).start()
 
 if __name__ == "__main__":
-    # Localmente usa o Flask, no Railway o Gunicorn ignora isto
     app.run(host='0.0.0.0', port=PORT)
