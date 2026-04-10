@@ -20,36 +20,43 @@ app = Flask(__name__)
 enviados = set()
 
 # --- FILTROS EXPANDIDOS ---
-# Adiciona aqui tudo o que queres que o bot detete
 KEYWORDS = [
     "pc", "gaming", "ssd", "monitor", "iphone", "portatil", "laptop",
     "asus", "logitech", "samsung", "hp", "lenovo", "msi", "rtx", "gtx",
     "teclado", "mouse", "rato", "auscultadores", "headset", "ps5", "xbox",
     "nintendo", "switch", "disco", "ram", "ryzen", "intel", "grafica",
-    "tablet", "ipad", "smartwatch", "apple", "xiaomi", "oferta", "desconto"
+    "tablet", "ipad", "smartwatch", "apple", "xiaomi", "oferta", "desconto",
+    "corsair", "razer", "hyperx", "acer", "dell", "benq", "lg"
 ]
-MAX_PRICE = 1500 # Aumentei um pouco para apanhar portáteis melhores
+MAX_PRICE = 1500 
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 @app.route('/')
 def health_check():
-    return "Bot V5.9 Ativo com Filtros Expandidos!", 200
+    return "Bot V5.9.1 Ativo!", 200
 
+# --- LÓGICA DE SCRAPING REFORÇADA ---
 def procurar_e_enviar():
-    log("🔎 Iniciando scan de ofertas (Filtro Expandido)...")
+    log("🔎 Iniciando scan de ofertas (Filtro Expandido + Headers Reforçados)...")
     url = f"https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031&ref={random.randint(1,999)}"
     
+    # Headers humanos para evitar o "Bloqueio temporário" visto nos logs
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept-Language": "pt-PT,pt;q=0.9"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-PT,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.google.pt/",
+        "Cache-Control": "no-cache"
     }
 
     try:
-        r = requests.get(url, headers=headers, timeout=25)
+        session = requests.Session()
+        r = session.get(url, headers=headers, timeout=30)
+        
         if "captcha" in r.text.lower() or r.status_code != 200:
-            log("⚠️ Bloqueio temporário da Amazon.")
+            log("⚠️ Bloqueio temporário da Amazon (IP marcado).") # Como visto no log
             return
 
         soup = BeautifulSoup(r.text, "html.parser")
@@ -60,7 +67,6 @@ def procurar_e_enviar():
             try:
                 texto_item = item.get_text().lower()
                 
-                # Verifica se alguma palavra-chave está no texto do produto
                 if any(k in texto_item for k in KEYWORDS):
                     preco_tag = item.find("span", class_="a-price-whole")
                     if not preco_tag: continue
@@ -88,10 +94,13 @@ def procurar_e_enviar():
                     time.sleep(2)
             except: continue
     except Exception as e:
-        log(f"❌ Erro: {e}")
+        log(f"❌ Erro no scan: {e}")
 
+# --- INICIALIZAÇÃO ---
 if __name__ == "__main__":
-    log("🚀 BOT V5.9 STARTUP")
+    log("🚀 BOT V5.9.1 STARTUP")
+    
+    # Correção do Timezone para Europe/Lisbon
     fuso_lisboa = pytz.timezone('Europe/Lisbon')
     
     scheduler = BackgroundScheduler(timezone=fuso_lisboa)
@@ -99,8 +108,10 @@ if __name__ == "__main__":
     scheduler.start()
     
     def startup_thread():
-        time.sleep(30)
+        time.sleep(45) # Tempo para o Flask estabilizar no Railway
         procurar_e_enviar()
         
     threading.Thread(target=startup_thread, daemon=True).start()
+    
+    # Flask corre em primeiro plano para o Railway receber o sinal 200 OK
     app.run(host='0.0.0.0', port=PORT, threaded=True)
