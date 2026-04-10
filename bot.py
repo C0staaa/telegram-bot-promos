@@ -19,36 +19,29 @@ bot = Bot(token=TOKEN)
 app = Flask(__name__)
 enviados = set()
 
-# --- FILTROS EXPANDIDOS ---
-KEYWORDS = [
-    "pc", "gaming", "ssd", "monitor", "iphone", "portatil", "laptop",
-    "asus", "logitech", "samsung", "hp", "lenovo", "msi", "rtx", "gtx",
-    "teclado", "mouse", "rato", "auscultadores", "headset", "ps5", "xbox",
-    "nintendo", "switch", "disco", "ram", "ryzen", "intel", "grafica",
-    "tablet", "ipad", "smartwatch", "apple", "xiaomi", "oferta", "desconto",
-    "corsair", "razer", "hyperx", "acer", "dell", "benq", "lg"
-]
-MAX_PRICE = 1500 
+KEYWORDS = ["pc", "gaming", "ssd", "monitor", "iphone", "portatil", "laptop", "asus", "logitech", "samsung", "hp", "ps5", "grafica", "apple"]
+MAX_PRICE = 1500
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 @app.route('/')
 def health_check():
-    return "Bot V5.9.1 Ativo!", 200
+    return "OK", 200
 
-# --- LÓGICA DE SCRAPING REFORÇADA ---
 def procurar_e_enviar():
-    log("🔎 Iniciando scan de ofertas (Filtro Expandido + Headers Reforçados)...")
-    url = f"https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031&ref={random.randint(1,999)}"
+    # Pausa aleatória inicial para não parecer um bot logo ao ligar
+    time.sleep(random.randint(5, 15))
+    log("🔎 Iniciando scan...")
     
-    # Headers humanos para evitar o "Bloqueio temporário" visto nos logs
+    url = f"https://www.amazon.es/s?k=informatica&rh=p_n_specials_match%3A21622307031&ref=nav_custrec_signin_{random.randint(1,999)}"
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "pt-PT,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://www.google.pt/",
-        "Cache-Control": "no-cache"
+        "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
     }
 
     try:
@@ -56,18 +49,17 @@ def procurar_e_enviar():
         r = session.get(url, headers=headers, timeout=30)
         
         if "captcha" in r.text.lower() or r.status_code != 200:
-            log("⚠️ Bloqueio temporário da Amazon (IP marcado).") # Como visto no log
+            log("⚠️ Bloqueio da Amazon. A tentar noutro ciclo...")
             return
 
         soup = BeautifulSoup(r.text, "html.parser")
         itens = soup.find_all("div", {"data-component-type": "s-search-result"})
-        log(f"📊 {len(itens)} produtos analisados.")
+        log(f"📊 Scan concluído: {len(itens)} produtos.")
 
         for item in itens:
             try:
-                texto_item = item.get_text().lower()
-                
-                if any(k in texto_item for k in KEYWORDS):
+                texto = item.get_text().lower()
+                if any(k in texto for k in KEYWORDS):
                     preco_tag = item.find("span", class_="a-price-whole")
                     if not preco_tag: continue
                     
@@ -79,39 +71,30 @@ def procurar_e_enviar():
                     if titulo in enviados: continue
 
                     link = "https://www.amazon.es" + h2.find("a")["href"]
-                    img_tag = item.find("img", class_="s-image")
-                    img_url = img_tag["src"] if img_tag else None
+                    img = item.find("img", class_="s-image")["src"]
 
-                    msg = f"🔥 *NOVA OFERTA DETETADA*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [VER NA AMAZON]({link})"
-                    
-                    if img_url:
-                        bot.send_photo(chat_id=CHAT_ID, photo=img_url, caption=msg, parse_mode='Markdown')
-                    else:
-                        bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode='Markdown')
-                    
+                    bot.send_photo(chat_id=CHAT_ID, photo=img, 
+                                 caption=f"🔥 *OFERTA*\n\n📦 {titulo}\n💰 *{preco}€*\n\n🔗 [Link]({link})", 
+                                 parse_mode='Markdown')
                     enviados.add(titulo)
-                    log(f"✅ Enviado: {titulo[:30]}...")
-                    time.sleep(2)
+                    time.sleep(3)
             except: continue
     except Exception as e:
-        log(f"❌ Erro no scan: {e}")
+        log(f"❌ Erro: {e}")
 
-# --- INICIALIZAÇÃO ---
+# --- INICIALIZAÇÃO SEGURA ---
+fuso = pytz.timezone('Europe/Lisbon')
+scheduler = BackgroundScheduler(timezone=fuso)
+scheduler.add_job(procurar_e_enviar, 'interval', minutes=30) # Aumentado para 30min para evitar bans
+scheduler.start()
+
+# Inicia o primeiro scan numa thread "silenciosa"
+def startup():
+    time.sleep(60) # Dá 1 minuto para o Railway validar o Healthcheck
+    procurar_e_enviar()
+
+threading.Thread(target=startup, daemon=True).start()
+
 if __name__ == "__main__":
-    log("🚀 BOT V5.9.1 STARTUP")
-    
-    # Correção do Timezone para Europe/Lisbon
-    fuso_lisboa = pytz.timezone('Europe/Lisbon')
-    
-    scheduler = BackgroundScheduler(timezone=fuso_lisboa)
-    scheduler.add_job(procurar_e_enviar, "interval", minutes=20)
-    scheduler.start()
-    
-    def startup_thread():
-        time.sleep(45) # Tempo para o Flask estabilizar no Railway
-        procurar_e_enviar()
-        
-    threading.Thread(target=startup_thread, daemon=True).start()
-    
-    # Flask corre em primeiro plano para o Railway receber o sinal 200 OK
-    app.run(host='0.0.0.0', port=PORT, threaded=True)
+    # Este bloco só corre localmente. No Railway, o Gunicorn usa o 'app' lá de cima.
+    app.run(host='0.0.0.0', port=PORT)
