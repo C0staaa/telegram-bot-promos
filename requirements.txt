@@ -1,7 +1,7 @@
 python-telegram-bot==13.15
-flask
-gunicorn
 requests
 beautifulsoup4
+flask
+gunicorn
 apscheduler
 pytz
